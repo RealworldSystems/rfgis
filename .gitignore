@@ -1,0 +1,37 @@
+# Editor files to be ignored
+*~
+.[#]*
+[#]*[#]
+
+# Output files to be ignored
+*.Po
+*.o
+*.lo
+*.la
+config.h.in
+config.h
+*.log
+config.status
+libtool
+stamp-h1
+configure
+Makefile
+Makefile.in
+/depcomp
+/ltmain.sh
+/INSTALL
+/install-sh
+/missing
+/m4/lt*.m4
+/aclocal.m4
+.dirstamp
+/qgis.db
+/rfgis-bin
+*.pyc
+
+# Directories to be ignored
+/autom4te.cache
+/.libs
+.deps
+generated
+/sip/qgis

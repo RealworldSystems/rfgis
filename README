@@ -1,0 +1,6 @@
+RFGis is a framework for building rapid GIS applications which are
+Small and Focused yet provide enough backbone to be able to use
+many professional GIS tools.
+
+RFGis extends on the desktop QGis implementation, in the current
+release QGis 1.8.
