@@ -30,7 +30,7 @@ AC_SUBST(HEADER_DIR, include)
 
 AC_PROG_CXX
 LT_INIT
-AM_INIT_AUTOMAKE([1.10 no-define subdir-objects])
+AM_INIT_AUTOMAKE([1.10 no-define subdir-objects parallel-tests])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -668,6 +668,48 @@ lo_bind="$lo_line"$'\n'"$add_section"$'\n'"$clean_section"$'\n'"$rm_section"$'\n
 
 ])
 
+dnl
+dnl SOURCE_MATCHES([directory], [wildcard-in], [wildcard-out], [regexp], 
+dnl                [output-var])
+dnl
+dnl Finds recursively in a given directory files which match a given wildcard
+dnl expression and looks if they have certain content matching a given
+dnl regular expression. If content is found, it is presented in a variable with
+dnl a given name. If the variable already exists, only the unique components
+dnl are appended.
+dnl
+dnl [directory]    - The directory where to search
+dnl [wildcard-in]  - The wildcard to use for the search
+dnl [wildcard-out] - The wildcard to use for exclusion
+dnl [regexp-in]    - The regular expression to use for the search to include
+dnl [output-var]   - The output variable to be used
+dnl
+
+AC_DEFUN([SOURCE_MATCHES], [
+
+pushdef([_ax_output_var], [$5])
+pushdef([_ax_directory], [$1])
+pushdef([_ax_wildcard_in], [$2])
+pushdef([_ax_wildcard_out], [$3])
+pushdef([_ax_regexp], [$4])
+
+echo "source match discovery including: _ax_wildcard_in, excluding: _ax_wildcard_out"
+
+_ax_output_var="${_ax_output_var}"$'\n'dnl
+`find "_ax_directory" dnl
+-name "_ax_wildcard_in" -and -not -name "_ax_wildcard_out" dnl
+-exec grep -l "_ax_regexp" {} \;`
+
+_ax_output_var=`echo "${_ax_output_var}" | sort -u`
+
+popdef([_ax_regexp])
+popdef([_ax_wildcard_out])
+popdef([_ax_wildcard_in])
+popdef([_ax_directory])
+popdef([_ax_output_var])
+
+])
+
 
 dnl
 dnl QGis uses SIP files, however, these files are difficult to come by as they 
@@ -919,40 +961,53 @@ dnl and source files.
 dnl
 dnl A C++ file needs moc compilations when satisfying the following:
 dnl
-dnl - The file contains the macro SIGNAL
-dnl - The file contains the macro SLOT
+dnl - The implementation file contains the macro SIGNAL
+dnl - The implementation file contains the macro SLOT
+dnl - The implementation file contains the macro emit
+dnl - The header file contains the macro Q_OBJECT
 dnl
 
-ac_moc_sources=`find rfgis_native -name "*.cpp" -exec grep -l "emit" {} \; -exec grep -l "SIGNAL" {} \; -exec grep -l "SLOT" {} \; | grep -v "/generated/" | sort -u`
+SOURCE_MATCHES([rfgis_native], [*.cpp], [moc_*], [emit], [ac_moc_sources])
+SOURCE_MATCHES([rfgis_native], [*.cpp], [moc_*], [SIGNAL], [ac_moc_sources])
+SOURCE_MATCHES([rfgis_native], [*.cpp], [moc_*], [SLOT], [ac_moc_sources])
 
-ac_moc_headers=`find include -name "*.h" -exec grep -l "Q_OBJECT" {} \; | sort -u | sed "s|include/\(.*\)\\.h|rfgis_native/\\1.cpp|" | sort -u`
+SOURCE_MATCHES([include], [*.h], [moc_*], [Q_OBJECT], [ac_moc_headers])
 
-ac_moc_sources=`echo "${ac_moc_sources}"$'\n'"${ac_moc_headers}" | sort -u`
+moc_cpps=
+ac_all_moc="${ac_moc_sources}${ac_moc_headers}"
+
+for moc_source in ${ac_all_moc}
+do
+	echo "${moc_source}"
+
+	AS_IF([test `echo "${moc_source}" | sed s/\\.h//` != "${moc_source}"],
+	      [moc_cpp=`echo "${moc_source}" |dnl
+sed "s%include/\(.*\)\\.h%rfgis_native/generated/moc_\\1.cpp%"`],
+	      [moc_cpp=`echo "${moc_source}" |dnl
+sed "s%rfgis_native/\(.*\)\\.cpp%rfgis_native/generated/moc_\\1.cpp%"`])
+
+	moc_cpps=`echo "${moc_cpps}"$'\n'"${moc_cpp}" | sort -u`
+done
 
 moc_section=
-moc_sources=
-lo_line=
-
-for moc_source in $ac_moc_sources
+for moc_cpp in ${moc_cpps}
 do
-	moc_cpp=`echo $moc_source | sed "s|rfgis_native/\(.*\)\\.cpp|rfgis_native/generated/moc_\\1.cpp|"`
-	echo "auto-discovery MOC generation for: $moc_cpp"
 	
-	moc=`echo $moc_source | sed "s|rfgis_native/\(.*\)\\.cpp|rfgis_native/generated/moc_\\1.cpp: \$\(top_srcdir\)/include/\\1.h \$\(top_srcdir\)/rfgis_native/\\1.cpp|"`
+	echo "auto-discovery MOC generation for: $moc_cpp"
+	moc=`echo "${moc_cpp}" | sed "s|rfgis_native/generated/moc_\(.*\)\\.cpp|rfgis_native/generated/moc_\\1.cpp: \$\(top_srcdir\)/include/\\1.h \$\(top_srcdir\)/rfgis_native/\\1.cpp|"`
 	moc_mkdir=$'\t'"@\$(MKDIR_P) \"$(dirname $moc_cpp)\""
 	moc_gen=$'\t'"\$(MOC_V) $QT_BINARY_PATH/moc \$< -o \$@"
 	moc_section="$moc_section""$moc"$'\n'"$moc_mkdir"$'\n'"$moc_gen"$'\n'
-	moc_object=`echo $moc_source | sed "s|rfgis_native/\(.*\)\\.cpp|rfgis_native/generated/librfgis_la-moc_\\1.lo|"`
-	moc_inter_object=`echo $moc_source | sed "s|rfgis_native/\(.*\)\\.cpp|rfgis_native/generated/librfgis_la-moc_\\1.o|"`
+	moc_object=`echo $moc_cpp | sed "s|rfgis_native/generated/moc_\(.*\)\\.cpp|rfgis_native/generated/librfgis_la-moc_\\1.lo|"`
 
-	base_object=`echo $moc_source | sed "s|rfgis_native/\(.*\)\\.cpp|rfgis_native/librfgis_la-\\1.lo|"`
+	base_object=`echo $moc_cpp | sed "s|rfgis_native/generated/moc_\(.*\)\\.cpp|rfgis_native/librfgis_la-\\1.lo|"`
 	
 	RFGIS_LO_BIND([$base_object], [$moc_object], [$moc_cpp])
 
 	moc_section=$moc_section$'\n'$lo_bind$'\n'
 done
 
-moc_section=$moc_sources$'\n'$moc_section
+moc_section=$moc_section
 
 AM_SUBST_NOTMAKE(moc_section)
 AC_SUBST(moc_section)
