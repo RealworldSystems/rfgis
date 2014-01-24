@@ -29,6 +29,9 @@ QTEMP_DIR = $(top_srcdir)/rfgis_native/generated
 QITEMP_DIR = $(top_srcdir)/include/generated
 SIPTEMP_DIR = sip/generated
 
+TESTS_ENVIRONMENT = PYTHONPATH='$(top_srcdir)'; export PYTHONPATH;
+PY_LOG_COMPILER = $(PYTHON)
+TEST_EXTENSIONS = .py
 
 lib_LTLIBRARIES += librfgis.la
 librfgis_la_SOURCES = \
@@ -85,6 +88,19 @@ install-system:
 
 uninstall-qgsmsystem:
 	$(RM_V) rm -rf "$(DESTDIR)$(libdir)/rfgis"
+
+# Tests can only be performed if the build produced a valid executable
+# and the executable can be used on the target system (build triplet
+# must thus be the same as the host triplet)
+
+TESTS=
+
+if UNIT_TESTING_ENABLED
+
+TESTS += tests/unittests/spatialpair_test.py 
+TESTS += tests/unittests/spatialfinder_test.py
+
+endif
 
 
 @moc_section@

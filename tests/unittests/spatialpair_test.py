@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Author: Sjoerd van Leent
+
 import unittest
 
 # The unit under test
@@ -24,12 +26,22 @@ from rfgis.model.spatialpair import *
 # Requirements of the unit under test
 from qgis.core import QgsDataProvider
 from qgis.core import QgsFeature
+from qgis.core import QgsGeometry
+from qgis.core import QgsPoint
+from qgis.core import QgsVectorLayer
 
 class MockFooProvider(QgsDataProvider):
     """
     A non-abstract subclass of QgsDataProvider with no further implementation
     """
     pass
+
+class MockFooLayer(QgsVectorLayer):
+    """
+    A non-abstract subclass of QgsVectorLayer with no further implementation
+    """
+    def __init__(self): self.provider = MockFooProvider()
+    def dataProvider(self): return self.provider
 
 class SpatialPairTestCase(unittest.TestCase):
     """
@@ -41,10 +53,9 @@ class SpatialPairTestCase(unittest.TestCase):
     
     def setUp(self):
         """
-        Creates a mock data provider of type Foo to use for testing.
-        Also creates a valid `feature'.
+        Creates a mock layer returning a mock provider
         """
-        self.foo_provider = MockFooProvider()
+        self.foo_layer = MockFooLayer()
         self.feature = QgsFeature()
         self.feature.setGeometry(QgsGeometry.fromPoint(QgsPoint(0, 0)))
         self.feature.setValid(True)
@@ -69,7 +80,7 @@ class SpatialPairTestCase(unittest.TestCase):
 
         self.assertRaises(InvalidSpatialPairException,
                           SpatialPair, 
-                          self.feature, self.foo_provider)
+                          self.feature, self.foo_layer)
 
     def test_fail_no_feature(self):
         """
@@ -78,7 +89,7 @@ class SpatialPairTestCase(unittest.TestCase):
         """
         self.assertRaises(InvalidSpatialPairException,
                           SpatialPair,
-                          self.foo_provider, None)
+                          self.foo_layer, None)
 
     def test_fail_no_data_provider(self):
         """
@@ -96,25 +107,34 @@ class SpatialPairTestCase(unittest.TestCase):
         """
         self.assertRaises(InvalidSpatialPairException,
                           SpatialPair,
-                          self.foo_provider, QgsFeature())
+                          self.foo_layer, QgsFeature())
 
-    def test_get_dataprovider(self):
+    def test_get_layer(self):
+        """
+        A valid spatial pair should return the given layer properly using the
+        method `layer()'
+        """
+        pair = SpatialPair(self.foo_layer, self.feature)
+        self.assertEquals(pair.layer(), self.foo_layer)
+
+    def test_get_data_provider(self):
         """
         A valid spatial pair should return the given data provider properly
         by both methods `data_provider' and `dataProvider'. The latter is
         implemented for naming conventions of Qt.
         """
-        pair = SpatialPair(self.foo_provider, self.feature)
-        self.assertEquals(pair.data_provider(), self.foo_provider)
-        self.assertEquals(pair.dataProvider(), self.foo_provider)
+        pair = SpatialPair(self.foo_layer, self.feature)
+        self.assertEquals(pair.data_provider(), self.foo_layer.dataProvider())
+        self.assertEquals(pair.dataProvider(), self.foo_layer.dataProvider())
 
     def test_get_feature(self):
         """
         A valid spatial pair should return the given feature properly using
         the `feature' method.
         """
-        pair = SpatialPair(self.foo_provider, self.feature)
+        pair = SpatialPair(self.foo_layer, self.feature)
         self.assertEquals(pair.feature(), self.feature)
 
     
         
+unittest.main()

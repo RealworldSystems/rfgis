@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Author: Sjoerd van Leent
+
 # QObject is the parent object of all Qt related objects
 from PyQt4.QtCore import QObject
 
@@ -27,6 +29,9 @@ from qgis.core import QgsDataProvider
 
 # QgsFeature is the implementing class for features as understood by QGis
 from qgis.core import QgsFeature
+
+# QgsMapLayer represents a collection of features
+from qgis.core import QgsMapLayer
 
 # Exception is the base class of all exceptions
 from exceptions import Exception
@@ -41,11 +46,15 @@ class SpatialPair(QObject):
     - The feature itself
     """
 
-    def __init__(self, data_provider, feature):
+    def __init__(self, layer, feature):
         """
         Initializes a spatial pair using a data provider and a feature
         """
-        self.__data_provider = data_provider
+        if isinstance(layer, QgsMapLayer): 
+            self.__data_provider = layer.dataProvider()
+        else:
+            self.__data_provider = None
+        self.__layer = layer
         self.__feature = feature
         QObject.__init__(self)
         self.verify()
@@ -68,6 +77,12 @@ class SpatialPair(QObject):
         """
         return self.__feature
 
+    def layer(self):
+        """
+        Returns the layer contained in this object
+        """
+        return self.__layer
+
     def valid(self):
         """
         Returns True if the data provider and feature instances are instances
@@ -76,6 +91,7 @@ class SpatialPair(QObject):
         """
         return (isinstance(self.__data_provider, QgsDataProvider) and
                 isinstance(self.__feature, QgsFeature) and
+                isinstance(self.__layer, QgsMapLayer) and
                 self.__feature.isValid())
 
     def verify(self):
@@ -84,7 +100,7 @@ class SpatialPair(QObject):
         is, when the `valid' method returns False
         """
         if not self.valid(): 
-            raise InvalidSpatialPairException(self.__data_provider, 
+            raise InvalidSpatialPairException(self.__layer, 
                                               self.__feature)
 
 
@@ -94,10 +110,10 @@ class InvalidSpatialPairException(Exception):
     is malformed by not having a proper data provider and/or feature.
     """
     
-    def __init__(self, data_provider, feature):
+    def __init__(self, layer, feature):
         Exception.__init__(self)
         self.message = (
-            "Could not create spatial pair with data provider: {0}"
-            "and feature: {1}").format(data_provider, feature)
+            "Could not create spatial pair with layer: {0}"
+            "and feature: {1}").format(layer, feature)
             
     

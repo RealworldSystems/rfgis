@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Author: Sjoerd van Leent
+
 AC_INIT([Real Focus GIS], 
         [0.9],
         [sjoerd.van.leent@realworld-systems.com],
@@ -30,9 +32,21 @@ AC_SUBST(HEADER_DIR, include)
 
 AC_PROG_CXX
 LT_INIT
-AM_INIT_AUTOMAKE([1.10 no-define subdir-objects parallel-tests])
+AM_INIT_AUTOMAKE([1.11 no-define subdir-objects parallel-tests color-tests])
+
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
+
+dnl
+dnl As RFGis is expected to be cross compiled, such as on Android/Linux 
+dnl devices and/or other systems, it is valuable to check if the BUILD
+dnl system is similar or dissimilar to the HOST system. If they are not
+dnl similar, this means that operations such as `make check' become illogical
+dnl to run and should become NOOPs.
+dnl
+
+AC_CANONICAL_BUILD()
+AC_CANONICAL_HOST()
 
 dnl ==== BASE PATH ====
 dnl
@@ -693,8 +707,6 @@ pushdef([_ax_wildcard_in], [$2])
 pushdef([_ax_wildcard_out], [$3])
 pushdef([_ax_regexp], [$4])
 
-echo "source match discovery including: _ax_wildcard_in, excluding: _ax_wildcard_out"
-
 _ax_output_var="${_ax_output_var}"$'\n'dnl
 `find "_ax_directory" dnl
 -name "_ax_wildcard_in" -and -not -name "_ax_wildcard_out" dnl
@@ -710,6 +722,36 @@ popdef([_ax_output_var])
 
 ])
 
+dnl
+dnl SIMILAR_BUILD_AND_HOST_AM_CONDITIONAL([the-conditional])
+dnl
+dnl Creates a check on whether or not a given conditional should be set
+dnl for Automake when the host system is similar to the build system and
+dnl the `executable' component is set.
+dnl
+dnl [the-conditional] - The name of the conditional to be set for Automake
+dnl
+
+AC_DEFUN([SIMILAR_BUILD_AND_HOST_AM_CONDITIONAL], [
+
+pushdef([build_triplet], [${build_cpu}-${build_vendor}-${build_os}])
+pushdef([host_triplet], [${host_cpu}-${host_vendor}-${host_os}])
+
+pushdef([the_conditional], [$1])
+
+AS_IF([test build_triplet == host_triplet],
+      [_ax_similar=yes],
+      [_ax_similar=no])
+
+AM_CONDITIONAL(
+	the_conditional,
+	[test x$_ax_similar == xyes])
+
+popdef([the_conditional])
+popdef([host_triplet])
+popdef([build_triplet])
+
+])
 
 dnl
 dnl QGis uses SIP files, however, these files are difficult to come by as they 
@@ -937,9 +979,12 @@ sip_section="$sip_almagation: $sip_header \$(top_srcdir)/sip/*.sip"$'\n'$'\t'$si
 
 RFGIS_LO_BIND([rfgis_native/librfgis_la-RFGisMain.lo], [$sip_object], [$sip_almagation])
 
-dnl add_section="rfgis_native/librfgis_la-RFGisMain.lo: $sip_object"
-dnl rm_section="rm_$sip_object: "$'\n'$'\t'"rm -f sip_object"$'\n'$'\t'"rm -f $sip_almagation"$'\n'$'\t'"rm -f $sip_inter_object"$'\n'$'\t'"rm -rf \$(top_srcdir)/sip/qgis"$'\n'$'\t'"rm -f $sip_sbf"
-dnl clean_section="clean: rm_$sip_object"
+
+dnl
+dnl This part adds the section where all the downloaded sip files and the 
+dnl generated SBF are removed from the system and add it as dependency to the
+dnl clean task.
+dnl
 
 cruft_rm_section="rm_almagation_cruft:"$'\n'
 cruft_rm_section="$cruft_rm_section"$'\t'"rm -rf \$(top_srcdir)/sip/qgis"$'\n'
@@ -949,7 +994,9 @@ cruft_clean_section="clean: rm_almagation_cruft"
 
 sip_section="$sip_section"$'\n'"$lo_bind"$'\n'"$cruft_rm_section"$'\n'"$cruft_clean_section"
 
-
+dnl
+dnl Adds the section to the Makefile as given by Makefile.in
+dnl
 
 AM_SUBST_NOTMAKE(sip_section)
 AC_SUBST(sip_section)
@@ -978,8 +1025,6 @@ ac_all_moc="${ac_moc_sources}${ac_moc_headers}"
 
 for moc_source in ${ac_all_moc}
 do
-	echo "${moc_source}"
-
 	AS_IF([test `echo "${moc_source}" | sed s/\\.h//` != "${moc_source}"],
 	      [moc_cpp=`echo "${moc_source}" |dnl
 sed "s%include/\(.*\)\\.h%rfgis_native/generated/moc_\\1.cpp%"`],
@@ -990,11 +1035,16 @@ sed "s%rfgis_native/\(.*\)\\.cpp%rfgis_native/generated/moc_\\1.cpp%"`])
 done
 
 moc_section=
+moc_cpp_transform="s|rfgis_native/generated/moc_\(.*\)\\.cpp|\$\(top_srcdir\)/rfgis_native/\\1.cpp|"
+moc_h_transform="s|rfgis_native/generated/moc_\(.*\)\\.cpp|\$\(top_srcdir\)/include/\\1.h|"
 for moc_cpp in ${moc_cpps}
 do
 	
-	echo "auto-discovery MOC generation for: $moc_cpp"
-	moc=`echo "${moc_cpp}" | sed "s|rfgis_native/generated/moc_\(.*\)\\.cpp|rfgis_native/generated/moc_\\1.cpp: \$\(top_srcdir\)/include/\\1.h \$\(top_srcdir\)/rfgis_native/\\1.cpp|"`
+	moc_target=`echo "${moc_cpp}" | sed "${moc_cpp_transform}"`
+	moc_header=`echo "${moc_cpp}" | sed "${moc_h_transform}"`
+	
+	echo "qt-moc-compilation ${moc_target} [${moc_header}] -> ${moc_cpp}"
+	moc="${moc_cpp}: ${moc_header} ${moc_target}"
 	moc_mkdir=$'\t'"@\$(MKDIR_P) \"$(dirname $moc_cpp)\""
 	moc_gen=$'\t'"\$(MOC_V) $QT_BINARY_PATH/moc \$< -o \$@"
 	moc_section="$moc_section""$moc"$'\n'"$moc_mkdir"$'\n'"$moc_gen"$'\n'
@@ -1011,6 +1061,19 @@ moc_section=$moc_section
 
 AM_SUBST_NOTMAKE(moc_section)
 AC_SUBST(moc_section)
+
+
+
+
+dnl
+dnl ---- Unit Testing ---
+dnl
+dnl Given that an executable is to be created ($executable), Automake
+dnl should be able to run tests if build triplet and target triplet are
+dnl available and similar.
+dnl
+
+SIMILAR_BUILD_AND_HOST_AM_CONDITIONAL([UNIT_TESTING_ENABLED])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
